@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream Theater Pro</title>
+<style>
+  :root { --bg: #0f0f0f; --card: #1e1e1e; --accent: #3d5afe; --secondary: #333; }
+  body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: system-ui, sans-serif; }
+  
+  /* Home Screen Styles */
+  #home-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .input-card {
+    background: var(--card);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width: 100%;
+    max-width: 450px;
+  }
+  .divider {
+    margin: 20px 0;
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #666;
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: ''; flex: 1; border-bottom: 1px solid #333;
+  }
+  .divider:not(:empty)::before { margin-right: .5em; }
+  .divider:not(:empty)::after { margin-left: .5em; }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #111;
+    color: #fff;
+    box-sizing: border-box;
+  }
+  .file-box {
+    background: #111;
+    border: 2px dashed #333;
+    padding: 15px;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .file-box:hover { border-color: var(--accent); }
+  
+  .btn-start {
+    width: 100%;
+    padding: 15px;
+    margin-top: 25px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  /* Theater View Styles */
+  #theater-view { display: none; height: 100vh; flex-direction: column; }
+  .video-container { flex-grow: 1; display: flex; flex-direction: column; background: #000; overflow: hidden; }
+  .stream-wrapper { flex: 1; position: relative; border-bottom: 1px solid #222; background: #000; }
+  video { width: 100%; height: 100%; object-fit: contain; }
+  
+  nav {
+    padding: 8px 15px;
+    background: #1a1a1a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .btn-back { background: #444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="home-screen">
+  <div class="input-card">
+    <h2 style="margin-top:0">Stream Launcher</h2>
+    
+    <div class="file-box" onclick="document.getElementById('fileLoader').click()">
+      <span id="file-label">Click to upload .txt file</span>
+      <input type="file" id="fileLoader" accept=".txt" style="display:none">
+    </div>
+
+    <div class="divider">OR ENTER MANUALLY</div>
+
+    <input type="text" id="url1" placeholder="Stream 1 .m3u8 URL">
+    <input type="text" id="url2" placeholder="Stream 2 .m3u8 URL">
+    <input type="text" id="url3" placeholder="Stream 3 .m3u8 URL">
+
+    <button class="btn-start" onclick="handleLaunch()">START MULTI-PLAY</button>
+  </div>
+</div>
+
+<div id="theater-view">
+  <nav>
+    <small id="status-text">3-Stream Mode</small>
+    <button class="btn-back" onclick="closeTheater()">← Back to Setup</button>
+  </nav>
+  <div class="video-container">
+    <div class="stream-wrapper"><video id="v1" controls playsinline muted></video></div>
+    <div class="stream-wrapper"><video id="v2" controls playsinline muted></video></div>
+    <div class="stream-wrapper"><video id="v3" controls playsinline muted></video></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+
+// Add this at the very top of your existing script
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js');
+}
+const hlsInstances = [null, null, null];
+const videos = [document.getElementById('v1'), document.getElementById('v2'), document.getElementById('v3')];
+const fileLoader = document.getElementById('fileLoader');
+const fileLabel = document.getElementById('file-label');
+
+// Update label when file is chosen
+fileLoader.onchange = () => {
+  if (fileLoader.files.length > 0) {
+    fileLabel.innerText = "Selected: " + fileLoader.files[0].name;
+    fileLabel.style.color = "#4CAF50";
+  }
+};
+
+async function handleLaunch() {
+  let urls = [
+    document.getElementById('url1').value.trim(),
+    document.getElementById('url2').value.trim(),
+    document.getElementById('url3').value.trim()
+  ];
+
+  // If a file is selected, read it and overwrite the manual URLs
+  if (fileLoader.files.length > 0) {
+    const text = await fileLoader.files[0].text();
+    urls = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+  }
+
+  // Check if we have at least one URL
+  if (urls.filter(u => u).length === 0) {
+    alert("Please provide at least one URL or a .txt file.");
+    return;
+  }
+
+  launchTheater(urls);
+}
+
+function launchTheater(urls) {
+  document.getElementById('home-screen').style.display = 'none';
+  document.getElementById('theater-view').style.display = 'flex';
+
+  urls.forEach((url, i) => {
+    if (i < 3 && url) {
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(videos[i]);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => videos[i].play().catch(()=>{}));
+        hlsInstances[i] = hls;
+      } else if (videos[i].canPlayType('application/vnd.apple.mpegurl')) {
+        videos[i].src = url;
+        videos[i].play().catch(()=>{});
+      }
+    }
+  });
+}
+
+function closeTheater() {
+  hlsInstances.forEach((hls, i) => {
+    if (hls) { hls.destroy(); hlsInstances[i] = null; }
+    videos[i].src = "";
+    videos[i].load();
+  });
+  document.getElementById('theater-view').style.display = 'none';
+  document.getElementById('home-screen').style.display = 'flex';
+  // Reset file loader
+  fileLoader.value = "";
+  fileLabel.innerText = "Click to upload .txt file";
+  fileLabel.style.color = "#fff";
+}
+</script>
+
+</body>
+</html> 

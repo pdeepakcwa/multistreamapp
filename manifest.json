@@ -1,0 +1,15 @@
+{
+  "name": "Stream Theater Pro",
+  "short_name": "StreamPlay",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#3d5afe",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+} 
